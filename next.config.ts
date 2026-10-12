@@ -1,9 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
+  // cacheComponents выключен сознательно: приложение целиком персональное
+  // и динамическое (сессия в cookies, данные под RLS), статическая оболочка
+  // почти ничего не даёт, а Date/new Date() при пререндере становятся ошибкой.
+  // См. CLAUDE.md → «Особенности Next.js 16».
   turbopack: {
     rules: {
       "*.css": {

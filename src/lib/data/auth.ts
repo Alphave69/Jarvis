@@ -1,6 +1,5 @@
 import "server-only";
 
-import { io } from "next/cache";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 
@@ -12,10 +11,6 @@ import { createClient } from "@/lib/supabase/server";
  * getClaims() проверяет подпись JWT (getSession() на сервере — нельзя).
  */
 export const requireUser = cache(async () => {
-  // Supabase проверяет срок токена через Date.now(). С cacheComponents это
-  // запрещено при пререндере (даже после cookies() — в runtime-prefetch),
-  // поэтому явно выносим проверку из пререндера.
-  await io();
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
 
