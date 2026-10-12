@@ -57,6 +57,8 @@ test.describe("дни", () => {
   test("подписи", () => {
     expect(d.formatDayMonth("2026-10-12")).toBe("12 октября");
     expect(d.formatDayTitle("2026-10-14")).toBe("14 октября, среда");
+    expect(d.formatFullDate("2026-10-12")).toBe("Понедельник, 12 октября 2026");
+    expect(d.formatFullDate("2026-09-27")).toBe("Воскресенье, 27 сентября 2026");
   });
 });
 
@@ -88,5 +90,12 @@ test.describe("время", () => {
     expect(d.hhmm("10:30:00")).toBe("10:30");
     expect(d.addMinutesToTime("23:30", 60)).toBe("00:30");
     expect(d.addMinutesToTime("00:15", -30)).toBe("23:45");
+    expect(d.timeToMinutes("14:05")).toBe(845);
+  });
+
+  test("текущее время в поясе", () => {
+    const now = new Date("2026-10-12T11:05:00Z");
+    expect(d.timeIn("Europe/Moscow", now)).toBe("14:05");
+    expect(d.timeIn("UTC", new Date("2026-10-12T00:07:00Z"))).toBe("00:07");
   });
 });

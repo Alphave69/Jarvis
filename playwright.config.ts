@@ -1,5 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
+import { E2E_NOW } from "./tests/mock-supabase/fixtures.mjs";
+
 const MOCK_PORT = 54329;
 const APP_PORT = 3100;
 
@@ -49,6 +51,8 @@ export default defineConfig({
           url: `http://localhost:${APP_PORT}/login`,
           env: {
             NEXT_DIST_DIR: ".next-test",
+            // «Сейчас» для сервера; браузеру то же время ставит page.clock.
+            E2E_NOW,
             NEXT_PUBLIC_SUPABASE_URL: `http://localhost:${MOCK_PORT}`,
             NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_mock",
           },

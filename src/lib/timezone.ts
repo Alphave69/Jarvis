@@ -24,3 +24,13 @@ function safeDecode(value: string): string | null {
     return null;
   }
 }
+
+/**
+ * Текущий момент на сервере. В e2e-тестах подменяется переменной E2E_NOW
+ * (ISO-строка), чтобы «сегодня» и «сейчас» были одинаковыми у сервера и
+ * браузера (там время фиксирует page.clock). В проде переменная не задана.
+ */
+export function serverNow(): Date {
+  const fake = process.env.E2E_NOW;
+  return fake ? new Date(fake) : new Date();
+}

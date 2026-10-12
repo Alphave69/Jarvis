@@ -118,3 +118,48 @@ export async function createEvent(
   if (error) throw new Error(`Не удалось создать событие: ${error.message}`);
   return data;
 }
+
+/** Полные данные события для его карточки. Время — 'HH:MM'. */
+export type EventDetails = Pick<
+  Tables<"events">,
+  | "id"
+  | "title"
+  | "event_date"
+  | "all_day"
+  | "color"
+  | "reminder_enabled"
+  | "reminder_minutes_before"
+> & {
+  start_time: string | null;
+  end_time: string | null;
+};
+
+/** Похоже ли на id события (uuid в Supabase). Мусор в URL — сразу «не найдено». */
+export function isEventIdLike(value: string): boolean {
+  return /^[0-9A-Za-z-]{1,64}$/.test(value);
+}
+
+/** Одно событие текущего пользователя или null (нет такого / чужое — RLS). */
+export async function getEvent(id: string): Promise<EventDetails | null> {
+  if (!isEventIdLike(id)) return null;
+  const { supabase } = await requireUser();
+
+  const { data, error } = await supabase
+    .from("events")
+    .select(
+      "id, title, event_date, all_day, start_time, end_time, color, reminder_enabled, reminder_minutes_before",
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  // 22P02 — строка не uuid: для пользователя это тоже «не найдено».
+  if (error?.code === "22P02") return null;
+  if (error) throw new Error(`Не удалось загрузить событие: ${error.message}`);
+  if (!data) return null;
+
+  return {
+    ...data,
+    start_time: data.start_time ? hhmm(data.start_time) : null,
+    end_time: data.end_time ? hhmm(data.end_time) : null,
+  };
+}

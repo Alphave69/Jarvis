@@ -13,9 +13,10 @@ import {
 
 import { signOut } from "@/lib/actions/auth";
 import { EVENT_COLORS } from "@/lib/colors";
-import type { DayEvent, DayMarkers } from "@/lib/data/events";
+import type { DayEvent, DayMarkers, EventDetails } from "@/lib/data/events";
 import type { EventColor } from "@/lib/database.types";
 import { DaySheet } from "./DaySheet";
+import { useOverlayNavigation } from "./useOverlayNavigation";
 import {
   MONTH_NAMES,
   WEEKDAY_SHORT,
@@ -36,6 +37,8 @@ type Props = {
   markers: DayMarkers;
   /** Открытая карточка дня (?d=YYYY-MM-DD) и её события с сервера. */
   day: { date: string; events: DayEvent[] } | null;
+  /** Открытое в карточке дня событие (?e=id); details = null — не найдено. */
+  event: { id: string; details: EventDetails | null } | null;
 };
 
 type Direction = "next" | "prev";
@@ -45,21 +48,23 @@ const SWIPE_THRESHOLD = 60;
 /** Сдвиг, после которого понимаем, горизонтальный жест или вертикальный. */
 const SWIPE_LOCK = 10;
 
-export function MonthView({ month, today, markers, day }: Props) {
+export function MonthView({ month, today, markers, day, event }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  // Месяц и карточка дня меняются на экране сразу, данные догружаются с сервера.
+  // Месяц на экране меняется сразу, точки догружаются с сервера.
   const [shownMonth, setShownMonth] = useOptimistic(month);
-  const [openDate, setOpenDate] = useOptimistic(day?.date ?? null);
-  // Закрытие через router.back() — не transition, поэтому прячем карточку сами.
-  const [closedDate, setClosedDate] = useState<string | null>(null);
-  const openedInApp = useRef(false);
   const keyboardProxy = useRef<HTMLInputElement>(null);
   const [direction, setDirection] = useState<Direction | null>(null);
 
+  const nav = useOverlayNavigation({
+    month: shownMonth,
+    server: { d: day?.date ?? null, e: event?.id ?? null },
+    onMonthChange: setShownMonth,
+  });
+  const visibleDate = nav.overlay.d;
+
   const markersReady = compareMonths(shownMonth, month) === 0;
   const todayMonth = monthOf(today);
-  const visibleDate = openDate !== null && openDate !== closedDate ? openDate : null;
 
   const goTo = useCallback(
     (target: YearMonth) => {
@@ -81,28 +86,9 @@ export function MonthView({ month, today, markers, day }: Props) {
     // iOS открывает клавиатуру только на focus() внутри жеста пользователя:
     // фокусируем скрытое поле сейчас, карточка затем переводит фокус в своё.
     keyboardProxy.current?.focus({ preventScroll: true });
-    openedInApp.current = true;
-    setClosedDate(null);
-    if (compareMonths(inMonth, shownMonth) !== 0) {
-      setDirection(compareMonths(inMonth, shownMonth) > 0 ? "next" : "prev");
-    }
-    startTransition(() => {
-      setShownMonth(inMonth);
-      setOpenDate(date);
-      router.push(`/?m=${formatMonthParam(inMonth)}&d=${date}`, { scroll: false });
-    });
-  }
-
-  function closeDay() {
-    setClosedDate(visibleDate);
-    if (openedInApp.current) {
-      openedInApp.current = false;
-      router.back();
-    } else {
-      startTransition(() => {
-        router.replace(`/?m=${formatMonthParam(shownMonth)}`, { scroll: false });
-      });
-    }
+    const delta = compareMonths(inMonth, shownMonth);
+    if (delta !== 0) setDirection(delta > 0 ? "next" : "prev");
+    nav.openDay(date, inMonth);
   }
 
   useArrowKeys(goPrev, goNext, visibleDate === null);
@@ -213,7 +199,11 @@ export function MonthView({ month, today, markers, day }: Props) {
           date={visibleDate}
           today={today}
           events={day?.date === visibleDate ? day.events : null}
-          onClose={closeDay}
+          eventId={nav.overlay.e}
+          event={event && event.id === nav.overlay.e ? event.details : undefined}
+          onOpenEvent={nav.openEvent}
+          onBackToDay={nav.backToDay}
+          onClose={nav.closeAll}
         />
       )}
     </main>

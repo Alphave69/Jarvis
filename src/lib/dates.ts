@@ -157,3 +157,26 @@ export function addMinutesToTime(time: string, minutes: number): string {
   const total = (((h * 60 + m + minutes) % 1440) + 1440) % 1440;
   return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
 }
+
+/** «Понедельник, 12 октября 2026». */
+export function formatFullDate(date: string): string {
+  const { year } = parseDate(date);
+  const weekday = WEEKDAY_LONG[weekdayMondayFirst(date)];
+  return `${weekday[0].toUpperCase()}${weekday.slice(1)}, ${formatDayMonth(date)} ${year}`;
+}
+
+/** 'HH:MM' → минуты от полуночи. */
+export function timeToMinutes(time: string): number {
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + m;
+}
+
+/** Текущее время 'HH:MM' в заданном поясе. */
+export function timeIn(timeZone: string, now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(now);
+}

@@ -1,6 +1,6 @@
 import { devices, expect, test as base, type Page } from "@playwright/test";
 
-import { MOCK_USER } from "../mock-supabase/fixtures.mjs";
+import { E2E_NOW, E2E_TODAY, MOCK_USER } from "../mock-supabase/fixtures.mjs";
 
 export const MOCK_URL = "http://localhost:54329";
 export const TZ = "Europe/Moscow";
@@ -22,12 +22,9 @@ export const MONTHS = [
   "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
 ];
 
-/** Сегодня 'YYYY-MM-DD' в поясе браузера тестов. */
-export function todayInTz(tz = TZ): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
-  }).format(new Date());
-}
+/** «Сегодня» в тестах — 12 октября 2026 (см. E2E_NOW: 14:00 по Москве). */
+export const TODAY = E2E_TODAY;
+export const todayInTz = () => TODAY;
 
 /**
  * test для e2e. Автоматически в каждом тесте: имитация Supabase сбрасывается
@@ -36,12 +33,21 @@ export function todayInTz(tz = TZ): string {
  */
 export const test = base.extend<{
   resetMock: void;
+  fixedClock: void;
   consoleErrors: string[];
   signedIn: Page;
 }>({
   resetMock: [
     async ({ request }, run) => {
       await request.post(`${MOCK_URL}/__reset`);
+      await run();
+    },
+    { auto: true },
+  ],
+  // Браузерные часы = E2E_NOW (сервер получает то же время через env).
+  fixedClock: [
+    async ({ page }, run) => {
+      await page.clock.setFixedTime(new Date(E2E_NOW));
       await run();
     },
     { auto: true },
