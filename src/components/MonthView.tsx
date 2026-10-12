@@ -13,8 +13,9 @@ import {
 
 import { signOut } from "@/lib/actions/auth";
 import { EVENT_COLORS } from "@/lib/colors";
-import type { DayMarkers } from "@/lib/data/events";
+import type { DayEvent, DayMarkers } from "@/lib/data/events";
 import type { EventColor } from "@/lib/database.types";
+import { DaySheet } from "./DaySheet";
 import {
   MONTH_NAMES,
   WEEKDAY_SHORT,
@@ -33,6 +34,8 @@ type Props = {
   month: YearMonth;
   today: string;
   markers: DayMarkers;
+  /** Открытая карточка дня (?d=YYYY-MM-DD) и её события с сервера. */
+  day: { date: string; events: DayEvent[] } | null;
 };
 
 type Direction = "next" | "prev";
@@ -42,15 +45,21 @@ const SWIPE_THRESHOLD = 60;
 /** Сдвиг, после которого понимаем, горизонтальный жест или вертикальный. */
 const SWIPE_LOCK = 10;
 
-export function MonthView({ month, today, markers }: Props) {
+export function MonthView({ month, today, markers, day }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  // Месяц на экране меняется сразу, данные (точки) догружаются с сервера.
+  // Месяц и карточка дня меняются на экране сразу, данные догружаются с сервера.
   const [shownMonth, setShownMonth] = useOptimistic(month);
+  const [openDate, setOpenDate] = useOptimistic(day?.date ?? null);
+  // Закрытие через router.back() — не transition, поэтому прячем карточку сами.
+  const [closedDate, setClosedDate] = useState<string | null>(null);
+  const openedInApp = useRef(false);
+  const keyboardProxy = useRef<HTMLInputElement>(null);
   const [direction, setDirection] = useState<Direction | null>(null);
 
   const markersReady = compareMonths(shownMonth, month) === 0;
   const todayMonth = monthOf(today);
+  const visibleDate = openDate !== null && openDate !== closedDate ? openDate : null;
 
   const goTo = useCallback(
     (target: YearMonth) => {
@@ -68,7 +77,35 @@ export function MonthView({ month, today, markers }: Props) {
   const goNext = useCallback(() => goTo(addMonths(shownMonth, 1)), [goTo, shownMonth]);
   const goPrev = useCallback(() => goTo(addMonths(shownMonth, -1)), [goTo, shownMonth]);
 
-  useArrowKeys(goPrev, goNext);
+  function openDay(date: string, inMonth: YearMonth = shownMonth) {
+    // iOS открывает клавиатуру только на focus() внутри жеста пользователя:
+    // фокусируем скрытое поле сейчас, карточка затем переводит фокус в своё.
+    keyboardProxy.current?.focus({ preventScroll: true });
+    openedInApp.current = true;
+    setClosedDate(null);
+    if (compareMonths(inMonth, shownMonth) !== 0) {
+      setDirection(compareMonths(inMonth, shownMonth) > 0 ? "next" : "prev");
+    }
+    startTransition(() => {
+      setShownMonth(inMonth);
+      setOpenDate(date);
+      router.push(`/?m=${formatMonthParam(inMonth)}&d=${date}`, { scroll: false });
+    });
+  }
+
+  function closeDay() {
+    setClosedDate(visibleDate);
+    if (openedInApp.current) {
+      openedInApp.current = false;
+      router.back();
+    } else {
+      startTransition(() => {
+        router.replace(`/?m=${formatMonthParam(shownMonth)}`, { scroll: false });
+      });
+    }
+  }
+
+  useArrowKeys(goPrev, goNext, visibleDate === null);
   useRefreshOnNewDay(today);
   const swipe = useHorizontalSwipe(goPrev, goNext);
 
@@ -106,6 +143,7 @@ export function MonthView({ month, today, markers }: Props) {
         onPointerMove={swipe.onPointerMove}
         onPointerUp={swipe.onPointerUp}
         onPointerCancel={swipe.onPointerCancel}
+        onClickCapture={swipe.onClickCapture}
       >
         <div
           key={monthKey}
@@ -126,6 +164,7 @@ export function MonthView({ month, today, markers }: Props) {
             <DayCell
               key={date}
               date={date}
+              onOpen={() => openDay(date)}
               inMonth={parseDate(date).month === shownMonth.month}
               isToday={date === today}
               isWeekend={i % 7 >= 5}
@@ -143,24 +182,54 @@ export function MonthView({ month, today, markers }: Props) {
         >
           Сегодня
         </button>
+        <button
+          type="button"
+          onClick={() => openDay(today, todayMonth)}
+          aria-label="Новое событие на сегодня"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-accent text-white active:opacity-70"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
         <form action={signOut}>
           <button type="submit" className="h-12 px-2 text-base text-muted active:opacity-60">
             Выйти
           </button>
         </form>
       </footer>
+
+      {/* Принимает фокус в момент тапа, чтобы iOS открыл клавиатуру (см. openDay). */}
+      <input
+        ref={keyboardProxy}
+        aria-hidden
+        tabIndex={-1}
+        className="pointer-events-none fixed top-0 left-0 h-px w-px text-base opacity-0"
+      />
+
+      {visibleDate && (
+        <DaySheet
+          key={visibleDate}
+          date={visibleDate}
+          today={today}
+          events={day?.date === visibleDate ? day.events : null}
+          onClose={closeDay}
+        />
+      )}
     </main>
   );
 }
 
 function DayCell({
   date,
+  onOpen,
   inMonth,
   isToday,
   isWeekend,
   colors,
 }: {
   date: string;
+  onOpen: () => void;
   inMonth: boolean;
   isToday: boolean;
   isWeekend: boolean;
@@ -176,8 +245,10 @@ function DayCell({
         : "text-foreground";
 
   return (
-    <div
-      className="flex flex-col items-center border-t border-separator pt-1.5"
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex cursor-pointer flex-col items-center border-t border-separator pt-1.5 outline-none transition-colors hover:bg-surface focus-visible:bg-surface active:bg-surface-2"
       aria-label={formatDayMonth(date) + (colors?.length ? ", есть события" : "")}
       aria-current={isToday ? "date" : undefined}
     >
@@ -195,7 +266,7 @@ function DayCell({
           />
         ))}
       </span>
-    </div>
+    </button>
   );
 }
 
@@ -233,8 +304,9 @@ function IconButton({
 }
 
 /** ← / → на клавиатуре (ПК). */
-function useArrowKeys(onLeft: () => void, onRight: () => void) {
+function useArrowKeys(onLeft: () => void, onRight: () => void, enabled: boolean) {
   useEffect(() => {
+    if (!enabled) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
       const target = e.target as HTMLElement | null;
@@ -244,7 +316,7 @@ function useArrowKeys(onLeft: () => void, onRight: () => void) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onLeft, onRight]);
+  }, [onLeft, onRight, enabled]);
 }
 
 /**
@@ -286,6 +358,9 @@ function useHorizontalSwipe(onSwipeRight: () => void, onSwipeLeft: () => void) {
     axis: "x" | "y" | null;
   } | null>(null);
 
+  // После свайпа палец отпускается над клеткой — этот клик не должен открыть день.
+  const suppressClick = useRef(false);
+
   const reset = () => {
     gesture.current = null;
     setDx(0);
@@ -293,7 +368,14 @@ function useHorizontalSwipe(onSwipeRight: () => void, onSwipeLeft: () => void) {
 
   return {
     dx,
+    onClickCapture(e: React.MouseEvent) {
+      if (!suppressClick.current) return;
+      suppressClick.current = false;
+      e.preventDefault();
+      e.stopPropagation();
+    },
     onPointerDown(e: PointerEvent) {
+      suppressClick.current = false;
       if (e.pointerType === "mouse" || gesture.current) return;
       gesture.current = { id: e.pointerId, x: e.clientX, y: e.clientY, axis: null };
     },
@@ -313,6 +395,8 @@ function useHorizontalSwipe(onSwipeRight: () => void, onSwipeLeft: () => void) {
       if (!g || g.id !== e.pointerId) return;
       const moveX = e.clientX - g.x;
       const horizontal = g.axis === "x";
+      // Палец сдвинулся — это был жест, а не тап. Сбросится на следующем pointerdown.
+      suppressClick.current = g.axis !== null;
       reset();
       if (!horizontal || Math.abs(moveX) < SWIPE_THRESHOLD) return;
       if (moveX < 0) onSwipeLeft();

@@ -129,3 +129,31 @@ export function endsNextDay(startTime: string | null, endTime: string | null): b
   if (!startTime || !endTime) return false;
   return endTime < startTime && endTime.slice(0, 5) !== "00:00";
 }
+
+export const WEEKDAY_LONG = [
+  "понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье",
+] as const;
+
+/** «14 октября, среда». */
+export function formatDayTitle(date: string): string {
+  return `${formatDayMonth(date)}, ${WEEKDAY_LONG[weekdayMondayFirst(date)]}`;
+}
+
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** 'HH:MM' (24 ч). Postgres отдаёт 'HH:MM:SS' — сначала обрезать через hhmm(). */
+export function isValidTime(value: string): boolean {
+  return TIME_RE.test(value);
+}
+
+/** 'HH:MM:SS' → 'HH:MM'. */
+export function hhmm(time: string): string {
+  return time.slice(0, 5);
+}
+
+/** Сдвиг времени на минуты по кругу суток: addMinutesToTime('23:30', 60) → '00:30'. */
+export function addMinutesToTime(time: string, minutes: number): string {
+  const [h, m] = time.split(":").map(Number);
+  const total = (((h * 60 + m + minutes) % 1440) + 1440) % 1440;
+  return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
+}

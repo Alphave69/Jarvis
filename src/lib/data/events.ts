@@ -1,7 +1,8 @@
 import "server-only";
 
-import type { EventColor } from "@/lib/database.types";
-import { addDays, endsNextDay } from "@/lib/dates";
+import type { EventColor, Tables } from "@/lib/database.types";
+import { addDays, endsNextDay, hhmm } from "@/lib/dates";
+import type { EventInput } from "@/lib/event-input";
 import { requireUser } from "./auth";
 
 /** Сколько точек максимум рисуем в клетке месяца. */
@@ -43,4 +44,77 @@ export async function getDayMarkers(from: string, to: string): Promise<DayMarker
     }
   }
   return markers;
+}
+
+/** Событие в карточке дня. Время — 'HH:MM'. */
+export type DayEvent = Pick<Tables<"events">, "id" | "title" | "all_day" | "color"> & {
+  start_time: string | null;
+  end_time: string | null;
+  /** Началось вчера и продолжается после полуночи. */
+  continued: boolean;
+};
+
+/**
+ * События дня: начинающиеся в этот день + «через полночь» со вчера.
+ * Порядок: весь день → продолжения со вчера → по времени начала.
+ */
+export async function listDayEvents(date: string): Promise<DayEvent[]> {
+  const { supabase } = await requireUser();
+  const previous = addDays(date, -1);
+
+  const { data, error } = await supabase
+    .from("events")
+    .select("id, title, event_date, all_day, start_time, end_time, color")
+    .gte("event_date", previous)
+    .lte("event_date", date)
+    .order("start_time", { nullsFirst: true });
+
+  if (error) throw new Error(`Не удалось загрузить события: ${error.message}`);
+
+  const rank = (e: DayEvent) => (e.all_day ? 0 : e.continued ? 1 : 2);
+
+  return data
+    .filter(
+      (e) => e.event_date === date || endsNextDay(e.start_time, e.end_time),
+    )
+    .map((e) => ({
+      id: e.id,
+      title: e.title,
+      all_day: e.all_day,
+      color: e.color,
+      start_time: e.start_time ? hhmm(e.start_time) : null,
+      end_time: e.end_time ? hhmm(e.end_time) : null,
+      continued: e.event_date !== date,
+    }))
+    .sort(
+      (a, b) =>
+        rank(a) - rank(b) || (a.start_time ?? "").localeCompare(b.start_time ?? ""),
+    );
+}
+
+/** Создаёт событие текущего пользователя. user_id подставляет БД (auth.uid()). */
+export async function createEvent(
+  input: EventInput,
+  timezone: string,
+): Promise<{ id: string }> {
+  const { supabase } = await requireUser();
+
+  const { data, error } = await supabase
+    .from("events")
+    .insert({
+      title: input.title,
+      event_date: input.eventDate,
+      all_day: input.allDay,
+      start_time: input.startTime,
+      end_time: input.endTime,
+      timezone,
+      color: input.color,
+      reminder_enabled: input.reminderEnabled,
+      reminder_minutes_before: input.reminderMinutesBefore,
+    })
+    .select("id")
+    .single();
+
+  if (error) throw new Error(`Не удалось создать событие: ${error.message}`);
+  return data;
 }
