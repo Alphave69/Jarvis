@@ -30,11 +30,11 @@ src/
       event/[id]/page.tsx    # карточка события + заметки
   components/                # UI-компоненты (MonthGrid, DayList, EventForm, NoteList, Sheet…)
   lib/
-    supabase/                # client.ts, server.ts, middleware.ts (@supabase/ssr)
-    data/                    # серверный слой доступа к данным: events.ts, notes.ts
-    actions/                 # Server Actions — тонкая обёртка над lib/data
+    supabase/                # env.ts, server.ts (клиент для сервера), proxy.ts (updateSession)
+    data/                    # серверный слой доступа к данным: auth.ts (requireUser), events.ts, notes.ts
+    actions/                 # Server Actions — тонкая обёртка над lib/data (auth.ts, events.ts, notes.ts)
     dates.ts                 # хелперы дат без внешних библиотек
-    types.ts                 # типы Event, Note
+    database.types.ts        # типы схемы БД (вручную, по миграциям; только `type`, не `interface`)
   proxy.ts                   # (бывший middleware.ts в Next 16) обновление сессии, редирект на /login
 supabase/
   migrations/                # SQL-миграции, применяются вручную в Supabase SQL Editor
@@ -58,6 +58,8 @@ public/
 
 - Событие = `event_date` (date) + `start_time`/`end_time` (time) + `timezone` (IANA). Не `timestamptz`, чтобы «весь день» не уезжал при смене пояса.
 - **Через полночь:** если `end_time < start_time`, конец — на следующий день (`event_date + 1`). В вид «день» такое событие попадает в день начала; в следующий день — как «продолжение» (только отображение).
+- Ограничения в БД: «весь день» ⇔ оба времени `null`; иначе `start_time` обязателен; `end_time <> start_time` (равные — неоднозначно: 0 или 24 ч); при `reminder_enabled` нужно `reminder_minutes_before`. `notes(event_id, user_id)` → составной FK на `events(id, user_id)`: заметка всегда принадлежит владельцу события.
+- Data API отдаёт `date` как `'YYYY-MM-DD'`, `time` как `'HH:MM:SS'` — не пропускать дату через `new Date()` (сдвиг пояса). Выборка месяца начинается на день раньше — ради событий через полночь.
 - Цвет = категория, 7 фиксированных значений.
 - `reminder_*` — только хранятся до этапа 4. `jarvis_comment` — для этапа 2.
 
@@ -74,7 +76,8 @@ public/
 - **Маленькие шаги.** После каждого шага — инструкция, как проверить руками.
 - **Коммит после каждого рабочего шага**, сообщение понятное, на английском, в повелительном наклонении («Add month view grid»).
 - **Не добавлять зависимости без необходимости.** Даты — на `Intl` и своих хелперах, свайпы — на touch-событиях, service worker — руками. Новая зависимость = обоснование в коммите.
-- **Безопасность данных:** каждая таблица с RLS, политика `user_id = auth.uid()`. Ключ `service_role` никогда не попадает на клиент.
+- **Безопасность данных:** каждая таблица с RLS, политика `user_id = (select auth.uid())`, по одной политике на команду. «Automatically expose new tables» в Supabase выключен → каждая новая таблица требует в миграции явный `grant select, insert, update, delete … to authenticated` (anon — ничего, `grant all` — никогда). Секретный ключ (`sb_secret_…` / `service_role`) никогда не попадает на клиент и в `NEXT_PUBLIC_*`.
+- **Проверка входа — в трёх местах:** `src/proxy.ts` (оптимистичный редирект), `requireUser()` в каждой функции `lib/data` и каждом Server Action, RLS в БД. Для авторизации на сервере — только `getClaims()`, не `getSession()`.
 - **Схема БД меняется только миграцией** в `supabase/migrations/NNNN_name.sql`.
 - Если нужно что-то от владельца (ключи, проект Supabase, настройки) — остановиться и дать точную пошаговую инструкцию.
 
@@ -95,5 +98,7 @@ public/
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=   # sb_publishable_…, публичный, защищён RLS
 ```
+
+Шаблон — `.env.example`. Миграции применяются вручную: Supabase → SQL Editor → вставить файл → Run (если ошибка — `rollback;` и повторить).
