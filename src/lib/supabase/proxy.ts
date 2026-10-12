@@ -7,6 +7,14 @@ import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./env";
 const PUBLIC_PATHS = new Set(["/login"]);
 
 /**
+ * Всё, что проходит через proxy, зависит от входа — кешировать нельзя.
+ * Иначе Chrome при «Назад» берёт из кеша старый 307 «/ → /login»
+ * (сохранённый до входа), сервер уже со входом отвечает «/login → /» —
+ * и получается бесконечный редирект.
+ */
+const NO_STORE = "private, no-store";
+
+/**
  * Обновляет сессию Supabase (refresh токена → новые cookies) и делает
  * быстрый редирект: без входа → /login, со входом на /login → /.
  * Это оптимистичная проверка; настоящая — в lib/data (requireUser) и RLS.
@@ -50,6 +58,7 @@ export async function updateSession(request: NextRequest) {
   if (isSignedIn && isPublic) return redirectWithSession(request, response, "/");
 
   // Вернуть именно этот объект: на нём Set-Cookie с обновлёнными токенами.
+  response.headers.set("Cache-Control", NO_STORE);
   return response;
 }
 
@@ -64,9 +73,10 @@ function redirectWithSession(
 
   const redirect = NextResponse.redirect(url);
   from.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
-  for (const header of ["Cache-Control", "Expires", "Pragma"]) {
+  for (const header of ["Expires", "Pragma"]) {
     const value = from.headers.get(header);
     if (value) redirect.headers.set(header, value);
   }
+  redirect.headers.set("Cache-Control", NO_STORE);
   return redirect;
 }

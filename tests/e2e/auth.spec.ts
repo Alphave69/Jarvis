@@ -40,3 +40,16 @@ test("вход → календарь; /login со входом → /; выхо�
   await page.goto("/");
   await expect(page).toHaveURL(/\/login$/);
 });
+
+test("«Назад» после входа не зацикливается (ответы proxy не кешируются)", async ({ page }) => {
+  // До входа браузер получил 307 «/ → /login». Если бы он его закешировал,
+  // «Назад» к «/» после входа дал бы ERR_TOO_MANY_REDIRECTS.
+  await signIn(page);
+  await page.goto("/?m=2026-10");
+  await page.goBack();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.locator("h1")).toContainText(/\d{4}/);
+
+  const res = await page.request.get("/", { maxRedirects: 0 });
+  expect(res.headers()["cache-control"]).toContain("no-store");
+});
