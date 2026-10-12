@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // e2e-тесты собирают приложение в .next-test, чтобы не трогать .next.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   // cacheComponents выключен сознательно: приложение целиком персональное
   // и динамическое (сессия в cookies, данные под RLS), статическая оболочка
   // почти ничего не даёт, а Date/new Date() при пререндере становятся ошибкой.

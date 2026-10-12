@@ -41,6 +41,12 @@ src/
   proxy.ts                   # (бывший middleware.ts в Next 16) обновление сессии, редирект на /login
 supabase/
   migrations/                # SQL-миграции, применяются вручную в Supabase SQL Editor
+tests/
+  unit/                      # чистые функции (даты, проверка ввода) — npm test
+  e2e/                       # браузер против production-сборки — npm run test:e2e
+  mock-supabase/             # имитация Supabase (Auth + PostgREST) и тестовые данные
+  run.mjs                    # кроссплатформенный запуск (PowerShell / Linux)
+playwright.config.ts
 public/
   manifest.webmanifest, sw.js, icons/
 ```
@@ -99,6 +105,8 @@ public/
 - **Один этап за раз.** Ничего из следующих этапов не делаем, даже если «это просто».
 - **Маленькие шаги.** После каждого шага — инструкция, как проверить руками.
 - **Коммит после каждого рабочего шага**, сообщение понятное, на английском, в повелительном наклонении («Add month view grid»).
+- **Перед каждым коммитом — тесты:** `npm run lint && npm test && npm run test:e2e` (e2e заодно проверяет `next build`). Красные тесты не коммитим. Новое поведение — вместе с e2e-тестом на него.
+- Имитация Supabase (`tests/mock-supabase/server.mjs`) повторяет CHECK-ограничения миграций. Меняешь схему — обнови имитацию и `database.types.ts` в том же коммите.
 - **Не добавлять зависимости без необходимости.** Даты — на `Intl` и своих хелперах, свайпы — на touch-событиях, service worker — руками. Новая зависимость = обоснование в коммите.
 - **Безопасность данных:** каждая таблица с RLS, политика `user_id = (select auth.uid())`, по одной политике на команду. «Automatically expose new tables» в Supabase выключен → каждая новая таблица требует в миграции явный `grant select, insert, update, delete … to authenticated` (anon — ничего, `grant all` — никогда). Секретный ключ (`sb_secret_…` / `service_role`) никогда не попадает на клиент и в `NEXT_PUBLIC_*`.
 - **Проверка входа — в трёх местах:** `src/proxy.ts` (оптимистичный редирект), `requireUser()` в каждой функции `lib/data` и каждом Server Action, RLS в БД. Для авторизации на сервере — только `getClaims()`, не `getSession()`.
@@ -115,8 +123,12 @@ public/
 ## Команды
 
 - `npm run dev` — локальный сервер
-- `npm run build` — сборка (проверять перед коммитом)
+- `npm run build` — сборка
 - `npm run lint` — линтер
+- `npm test` — юнит-тесты (секунды)
+- `npm run test:e2e` — браузерные тесты (~1 мин): сами поднимают имитацию Supabase (порт 54329) и production-сборку в `.next-test` на порту 3100; реальный Supabase и `.env.local` не трогают. Отчёт о падении — в `test-results/` (`npx playwright show-trace …/trace.zip`).
+- Первый раз на новой машине: `npx playwright install chromium`.
+- Тесты, завязанные на данные, открывают `?m=2026-10` (данные — в `tests/mock-supabase/fixtures.mjs`); «сегодня» тесты считают сами — от текущей даты не зависят. Браузер в тестах — Chromium с размерами iPhone 13 (Safari/WebKit не проверяется).
 
 ## Переменные окружения (`.env.local`, не коммитится)
 
