@@ -1,27 +1,15 @@
-import { signOut } from "@/lib/actions/auth";
-import { requireUser } from "@/lib/data/auth";
+import { MonthView } from "@/components/MonthView";
+import { getDayMarkers } from "@/lib/data/events";
+import { monthGridRange, monthOf, parseMonthParam, todayIn } from "@/lib/dates";
+import { getUserTimeZone } from "@/lib/timezone";
 
-export default async function HomePage() {
-  const { email } = await requireUser();
+export default async function MonthPage({ searchParams }: PageProps<"/">) {
+  const { m } = await searchParams;
+  const today = todayIn(await getUserTimeZone());
+  const month = parseMonthParam(typeof m === "string" ? m : null) ?? monthOf(today);
 
-  return (
-    <main className="flex flex-1 flex-col px-4 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
-      <header className="flex h-14 items-center justify-between">
-        <h1 className="text-xl font-semibold">Джарвис</h1>
-        <form action={signOut}>
-          <button
-            type="submit"
-            className="h-11 px-2 text-base text-accent active:opacity-60"
-          >
-            Выйти
-          </button>
-        </form>
-      </header>
+  const { from, to } = monthGridRange(month);
+  const markers = await getDayMarkers(from, to);
 
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-        <p>Вы вошли как {email ?? "пользователь"}</p>
-        <p className="text-muted">Календарь — на следующем шаге.</p>
-      </div>
-    </main>
-  );
+  return <MonthView month={month} today={today} markers={markers} />;
 }

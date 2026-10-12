@@ -36,3 +36,29 @@ body {
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
 }
+
+/* Перелистывание месяца: новая сетка въезжает с той стороны, куда листали */
+@theme {
+  --animate-month-from-right: month-from-right 220ms ease-out;
+  --animate-month-from-left: month-from-left 220ms ease-out;
+
+  @keyframes month-from-right {
+    from {
+      transform: translateX(30%);
+      opacity: 0;
+    }
+  }
+  @keyframes month-from-left {
+    from {
+      transform: translateX(-30%);
+      opacity: 0;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-month-from-right,
+  .animate-month-from-left {
+    animation: none;
+  }
+}
