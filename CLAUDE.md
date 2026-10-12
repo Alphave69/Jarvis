@@ -14,6 +14,7 @@
 
 - Версия новее, чем знания модели: перед кодом сверяться с документацией в `node_modules/next/dist/docs/` (см. `AGENTS.md`).
 - Включены `cacheComponents` + `partialPrefetching` (дефолт шаблона, станут обязательными в следующей мажорной версии). Следствие: чтение `cookies()` (сессия Supabase) — только внутри `<Suspense>` (или `loading.tsx`), иначе ошибка сборки. Сессию не читать на верхнем уровне layout.
+- `Date.now()` / `new Date()` / `Math.random()` на сервере при пререндере — ошибка «unstable value», **даже после `cookies()`** (runtime-prefetch). Supabase внутри `getClaims()` вызывает `Date.now()`, поэтому `requireUser()` начинается с `await io()` (`next/cache`). Любое «сегодня» на сервере — тоже только после `await io()` / `requireUser()`.
 - `middleware.ts` переименован в `proxy.ts`, функция — `proxy`.
 - Шрифты — системные (`-apple-system`), без `next/font/google`.
 
